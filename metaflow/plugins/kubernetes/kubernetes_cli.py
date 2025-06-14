@@ -54,6 +54,12 @@ def kubernetes():
     help="Optional Docker Image Pull Policy for Kubernetes pod.",
 )
 @click.option(
+    "--image-pull-secrets",
+    default=None,
+    type=JSONTypeClass(),
+    multiple=False,
+)
+@click.option(
     "--service-account",
     help="IRSA requirement for Kubernetes pod.",
 )
@@ -145,6 +151,12 @@ def kubernetes():
     type=JSONTypeClass(),
     multiple=False,
 )
+@click.option(
+    "--security-context",
+    default=None,
+    type=JSONTypeClass(),
+    multiple=False,
+)
 @click.pass_context
 def step(
     ctx,
@@ -154,6 +166,7 @@ def step(
     executable=None,
     image=None,
     image_pull_policy=None,
+    image_pull_secrets=None,
     service_account=None,
     secrets=None,
     node_selector=None,
@@ -176,6 +189,7 @@ def step(
     qos=None,
     labels=None,
     annotations=None,
+    security_context=None,
     **kwargs
 ):
     def echo(msg, stream="stderr", job_id=None, **kwargs):
@@ -296,6 +310,7 @@ def step(
                 step_cli=step_cli,
                 docker_image=image,
                 docker_image_pull_policy=image_pull_policy,
+                image_pull_secrets=image_pull_secrets,
                 service_account=service_account,
                 secrets=secrets,
                 node_selector=node_selector,
@@ -319,6 +334,7 @@ def step(
                 qos=qos,
                 labels=labels,
                 annotations=annotations,
+                security_context=security_context,
             )
     except Exception:
         traceback.print_exc(chain=False)

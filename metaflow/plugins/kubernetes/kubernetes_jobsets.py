@@ -562,6 +562,12 @@ class JobSetSpec(object):
             self._kwargs["memory"],
             self._kwargs["disk"],
         )
+        security_context = self._kwargs.get("security_context", {})
+        _security_context = {}
+        if security_context is not None and len(security_context) > 0:
+            _security_context = {
+                "security_context": client.V1SecurityContext(**security_context)
+            }
         return dict(
             name=self.name,
             template=client.api_client.ApiClient().sanitize_for_serialization(
@@ -708,11 +714,15 @@ class JobSetSpec(object):
                                             is not None
                                             else []
                                         ),
+                                        **_security_context,
                                     )
                                 ],
                                 node_selector=self._kwargs.get("node_selector"),
-                                # TODO (savin): Support image_pull_secrets
-                                # image_pull_secrets=?,
+                                image_pull_secrets=[
+                                    client.V1LocalObjectReference(secret)
+                                    for secret in self._kwargs.get("image_pull_secrets")
+                                    or []
+                                ],
                                 # TODO (savin): Support preemption policies
                                 # preemption_policy=?,
                                 #

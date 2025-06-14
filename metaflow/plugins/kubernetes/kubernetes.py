@@ -170,6 +170,7 @@ class Kubernetes(object):
         code_package_ds,
         docker_image,
         docker_image_pull_policy,
+        image_pull_secrets=None,
         step_cli=None,
         service_account=None,
         secrets=None,
@@ -194,6 +195,7 @@ class Kubernetes(object):
         port=None,
         num_parallel=None,
         qos=None,
+        security_context=None,
     ):
         name = "js-%s" % str(uuid4())[:6]
         jobset = (
@@ -205,6 +207,7 @@ class Kubernetes(object):
                 node_selector=node_selector,
                 image=docker_image,
                 image_pull_policy=docker_image_pull_policy,
+                image_pull_secrets=image_pull_secrets,
                 cpu=cpu,
                 memory=memory,
                 disk=disk,
@@ -227,6 +230,7 @@ class Kubernetes(object):
                 port=port,
                 num_parallel=num_parallel,
                 qos=qos,
+                security_context=security_context,
             )
             .environment_variable("METAFLOW_CODE_SHA", code_package_sha)
             .environment_variable("METAFLOW_CODE_URL", code_package_url)
@@ -465,6 +469,7 @@ class Kubernetes(object):
         step_cli,
         docker_image,
         docker_image_pull_policy,
+        image_pull_secrets=None,
         service_account=None,
         secrets=None,
         node_selector=None,
@@ -488,6 +493,7 @@ class Kubernetes(object):
         name_pattern=None,
         qos=None,
         annotations=None,
+        security_context=None,
     ):
         if env is None:
             env = {}
@@ -510,6 +516,7 @@ class Kubernetes(object):
                 ),
                 image=docker_image,
                 image_pull_policy=docker_image_pull_policy,
+                image_pull_secrets=image_pull_secrets,
                 cpu=cpu,
                 memory=memory,
                 disk=disk,
@@ -530,6 +537,7 @@ class Kubernetes(object):
                 shared_memory=shared_memory,
                 port=port,
                 qos=qos,
+                security_context=security_context,
             )
             .environment_variable("METAFLOW_CODE_SHA", code_package_sha)
             .environment_variable("METAFLOW_CODE_URL", code_package_url)

@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+import errno
 import json
 import time
 import math
@@ -17,7 +18,6 @@ from itertools import starmap, chain, islice
 
 from boto3.exceptions import RetriesExceededError, S3UploadFailedError
 from boto3.s3.transfer import TransferConfig
-from botocore.config import Config
 from botocore.exceptions import ClientError, SSLError
 
 try:
@@ -49,13 +49,11 @@ from metaflow.plugins.datatools.s3.s3util import (
 import metaflow.tracing as tracing
 from metaflow.metaflow_config import (
     S3_WORKER_COUNT,
-    S3_CLIENT_RETRY_CONFIG,
 )
 
 DOWNLOAD_FILE_THRESHOLD = 2 * TransferConfig().multipart_threshold
 DOWNLOAD_MAX_CHUNK = 2 * 1024 * 1024 * 1024 - 1
 
-DEFAULT_S3_CLIENT_PARAMS = {"config": Config(retries=S3_CLIENT_RETRY_CONFIG)}
 RANGE_MATCH = re.compile(r"bytes (?P<start>[0-9]+)-(?P<end>[0-9]+)/(?P<total>[0-9]+)")
 
 # from botocore ClientError MSG_TEMPLATE:
@@ -108,6 +106,7 @@ ERROR_VERIFY_FAILED = 9
 ERROR_LOCAL_FILE_NOT_FOUND = 10
 ERROR_INVALID_RANGE = 11
 ERROR_TRANSIENT = 12
+ERROR_OUT_OF_DISK_SPACE = 13
 
 
 def format_result_line(idx, prefix, url="", local=""):
@@ -130,9 +129,9 @@ def normalize_client_error(err):
     try:
         return int(error_code)
     except ValueError:
-        if error_code in ("AccessDenied", "AllAccessDisabled"):
+        if error_code in ("AccessDenied", "AllAccessDisabled", "InvalidAccessKeyId"):
             return 403
-        if error_code == "NoSuchKey":
+        if error_code in ("NoSuchKey", "NoSuchBucket"):
             return 404
         if error_code == "InvalidRange":
             return 416
@@ -276,6 +275,17 @@ def worker(result_file_name, queue, mode, s3config):
                             os.unlink(tmp.name)
                             err = convert_to_client_error(e)
                             handle_client_error(err, idx, result_file)
+                            continue
+                        except OSError as e:
+                            tmp.close()
+                            os.unlink(tmp.name)
+                            if e.errno == errno.ENOSPC:
+                                result_file.write(
+                                    "%d %d\n" % (idx, -ERROR_OUT_OF_DISK_SPACE)
+                                )
+                            else:
+                                result_file.write("%d %d\n" % (idx, -ERROR_TRANSIENT))
+                            result_file.flush()
                             continue
                     except (SSLError, Exception) as e:
                         tmp.close()
@@ -643,6 +653,8 @@ def exit(exit_code, url):
         msg = "Local file not found: %s" % url
     elif exit_code == ERROR_TRANSIENT:
         msg = "Transient error for url: %s" % url
+    elif exit_code == ERROR_OUT_OF_DISK_SPACE:
+        msg = "Out of disk space when downloading URL: %s" % url
     else:
         msg = "Unknown error"
     print("s3op failed:\n%s" % msg, file=sys.stderr)
@@ -815,7 +827,7 @@ def lst(
     s3config = S3Config(
         s3role,
         json.loads(s3sessionvars) if s3sessionvars else None,
-        json.loads(s3clientparams) if s3clientparams else DEFAULT_S3_CLIENT_PARAMS,
+        json.loads(s3clientparams) if s3clientparams else None,
     )
 
     urllist = []
@@ -948,7 +960,7 @@ def put(
     s3config = S3Config(
         s3role,
         json.loads(s3sessionvars) if s3sessionvars else None,
-        json.loads(s3clientparams) if s3clientparams else DEFAULT_S3_CLIENT_PARAMS,
+        json.loads(s3clientparams) if s3clientparams else None,
     )
 
     urls = list(starmap(_make_url, _files()))
@@ -1095,7 +1107,7 @@ def get(
     s3config = S3Config(
         s3role,
         json.loads(s3sessionvars) if s3sessionvars else None,
-        json.loads(s3clientparams) if s3clientparams else DEFAULT_S3_CLIENT_PARAMS,
+        json.loads(s3clientparams) if s3clientparams else None,
     )
 
     # Construct a list of URL (prefix) objects
@@ -1173,6 +1185,8 @@ def get(
             )
             if verify:
                 verify_info.append((url, sz))
+        elif sz == -ERROR_OUT_OF_DISK_SPACE:
+            exit(ERROR_OUT_OF_DISK_SPACE, url)
         elif sz == -ERROR_URL_ACCESS_DENIED:
             denied_url = url
             break
@@ -1242,7 +1256,7 @@ def info(
     s3config = S3Config(
         s3role,
         json.loads(s3sessionvars) if s3sessionvars else None,
-        json.loads(s3clientparams) if s3clientparams else DEFAULT_S3_CLIENT_PARAMS,
+        json.loads(s3clientparams) if s3clientparams else None,
     )
 
     # Construct a list of URL (prefix) objects

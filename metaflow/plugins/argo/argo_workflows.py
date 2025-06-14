@@ -1978,6 +1978,15 @@ class ArgoWorkflows(object):
                 resources["disk"],
             )
 
+            security_context = resources.get("security_context", None)
+            _security_context = {}
+            if security_context is not None and len(security_context) > 0:
+                _security_context = {
+                    "security_context": kubernetes_sdk.V1SecurityContext(
+                        **security_context
+                    )
+                }
+
             # Create a ContainerTemplate for this node. Ideally, we would have
             # liked to inline this ContainerTemplate and avoid scanning the workflow
             # twice, but due to issues with variable substitution, we will have to
@@ -1998,6 +2007,7 @@ class ArgoWorkflows(object):
                     namespace=resources["namespace"],
                     image=resources["image"],
                     image_pull_policy=resources["image_pull_policy"],
+                    image_pull_secrets=resources["image_pull_secrets"],
                     service_account=resources["service_account"],
                     secrets=(
                         [
@@ -2034,6 +2044,7 @@ class ArgoWorkflows(object):
                     shared_memory=shared_memory,
                     port=port,
                     qos=resources["qos"],
+                    security_context=security_context,
                 )
 
                 for k, v in env.items():
@@ -2183,6 +2194,8 @@ class ArgoWorkflows(object):
                     .node_selectors(resources.get("node_selector"))
                     # Set tolerations
                     .tolerations(resources.get("tolerations"))
+                    # Set image pull secrets
+                    .image_pull_secrets(resources.get("image_pull_secrets"))
                     # Set container
                     .container(
                         # TODO: Unify the logic with kubernetes.py
@@ -2310,6 +2323,7 @@ class ArgoWorkflows(object):
                                     is not None
                                     else []
                                 ),
+                                **_security_context,
                             ).to_dict()
                         )
                     )
@@ -2721,7 +2735,7 @@ class ArgoWorkflows(object):
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": ":metaflow: Environment details"
+                    "text": "Environment details"
                 },
                 "fields": [
                     {
@@ -2739,7 +2753,7 @@ class ArgoWorkflows(object):
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": ":metaflow: Environment details"
+                    "text": "Environment details"
                 }
             }
 
@@ -3731,6 +3745,10 @@ class Template(object):
 
     def tolerations(self, tolerations):
         self.payload["tolerations"] = tolerations
+        return self
+
+    def image_pull_secrets(self, image_pull_secrets):
+        self.payload["image_pull_secrets"] = image_pull_secrets
         return self
 
     def to_json(self):

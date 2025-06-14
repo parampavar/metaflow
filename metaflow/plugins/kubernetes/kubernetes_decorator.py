@@ -18,6 +18,7 @@ from metaflow.metaflow_config import (
     KUBERNETES_FETCH_EC2_METADATA,
     KUBERNETES_GPU_VENDOR,
     KUBERNETES_IMAGE_PULL_POLICY,
+    KUBERNETES_IMAGE_PULL_SECRETS,
     KUBERNETES_MEMORY,
     KUBERNETES_LABELS,
     KUBERNETES_ANNOTATIONS,
@@ -72,6 +73,10 @@ class KubernetesDecorator(StepDecorator):
         not, a default Docker image mapping to the current version of Python is used.
     image_pull_policy: str, default KUBERNETES_IMAGE_PULL_POLICY
         If given, the imagePullPolicy to be applied to the Docker image of the step.
+    image_pull_secrets: List[str], default []
+        The default is extracted from METAFLOW_KUBERNETES_IMAGE_PULL_SECRETS.
+        Kubernetes image pull secrets to use when pulling container images
+        in Kubernetes.
     service_account : str, default METAFLOW_KUBERNETES_SERVICE_ACCOUNT
         Kubernetes service account to use when launching pod in Kubernetes.
     secrets : List[str], optional, default None
@@ -122,6 +127,14 @@ class KubernetesDecorator(StepDecorator):
         Only applicable when @parallel is used.
     qos: str, default: Burstable
         Quality of Service class to assign to the pod. Supported values are: Guaranteed, Burstable, BestEffort
+
+    security_context: Dict[str, Any], optional, default None
+        Container security context. Applies to the task container. Allows the following keys:
+        - privileged: bool, optional, default None
+        - allow_privilege_escalation: bool, optional, default None
+        - run_as_user: int, optional, default None
+        - run_as_group: int, optional, default None
+        - run_as_non_root: bool, optional, default None
     """
 
     name = "kubernetes"
@@ -131,6 +144,7 @@ class KubernetesDecorator(StepDecorator):
         "disk": "10240",
         "image": None,
         "image_pull_policy": None,
+        "image_pull_secrets": None,  # e.g., ["regcred"]
         "service_account": None,
         "secrets": None,  # e.g., mysecret
         "node_selector": None,  # e.g., kubernetes.io/os=linux
@@ -152,6 +166,7 @@ class KubernetesDecorator(StepDecorator):
         "executable": None,
         "hostname_resolution_timeout": 10 * 60,
         "qos": KUBERNETES_QOS,
+        "security_context": None,
     }
     package_url = None
     package_sha = None
@@ -183,6 +198,10 @@ class KubernetesDecorator(StepDecorator):
             )
         if not self.attributes["image_pull_policy"] and KUBERNETES_IMAGE_PULL_POLICY:
             self.attributes["image_pull_policy"] = KUBERNETES_IMAGE_PULL_POLICY
+        if not self.attributes["image_pull_secrets"] and KUBERNETES_IMAGE_PULL_SECRETS:
+            self.attributes["image_pull_secrets"] = json.loads(
+                KUBERNETES_IMAGE_PULL_SECRETS
+            )
 
         if isinstance(self.attributes["node_selector"], str):
             self.attributes["node_selector"] = parse_kube_keyvalue_list(
@@ -470,10 +489,12 @@ class KubernetesDecorator(StepDecorator):
                         for key, val in v.items()
                     ]
                 elif k in [
+                    "image_pull_secrets",
                     "tolerations",
                     "persistent_volume_claims",
                     "labels",
                     "annotations",
+                    "security_context",
                 ]:
                     cli_args.command_options[k] = json.dumps(v)
                 else:
